@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 from io import StringIO
 
-st.title("📊 Dashboard Previdenciário Modular - Revisão da Vida Toda - Versão 4")
+st.set_page_config(page_title="Dashboard Previdenciário Modular", layout="wide")
+st.title("📊 Dashboard Previdenciário Modular - Revisão da Vida Toda - Versão 4.1")
 
 # =============================
 # 📥 Etapa 1 - Inserção dos Dados CNIS
@@ -98,11 +99,11 @@ if cnis_df is not None and carta_df is not None:
     beneficio = calcular_salario_beneficio(media_cnis, FP)
     renda_inicial = calcular_renda_mensal_inicial(beneficio)
 
-    st.write(f"**Média dos 80% maiores salários CNIS:** R$ {media_cnis:,.2f}")
-    st.write(f"**Média dos 80% maiores salários Carta:** R$ {media_carta:,.2f}")
-    st.write(f"**Fator Previdenciário Calculado:** {FP:.4f}")
-    st.write(f"**Salário de Benefício Calculado:** R$ {beneficio:,.2f}")
-    st.write(f"**Renda Mensal Inicial Calculada:** R$ {renda_inicial:,.2f}")
+    st.metric("Média dos 80% maiores salários CNIS", f"R$ {media_cnis:,.2f}")
+    st.metric("Média dos 80% maiores salários Carta", f"R$ {media_carta:,.2f}")
+    st.metric("Fator Previdenciário Calculado", f"{FP:.4f}")
+    st.metric("Salário de Benefício Calculado", f"R$ {beneficio:,.2f}")
+    st.metric("Renda Mensal Inicial Calculada", f"R$ {renda_inicial:,.2f}")
 
     resultado_df = pd.DataFrame({
         'Fonte': ['CNIS', 'Carta'],
