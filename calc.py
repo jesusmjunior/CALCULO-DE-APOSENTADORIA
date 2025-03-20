@@ -2,163 +2,158 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 
-st.set_page_config(page_title="Cálculo Previdenciário - Revisão", layout="wide")
+st.set_page_config(page_title="Cálculo Previdenciário INSS V5", layout="wide")
 
-st.title("📊 INSS Cálculo Previdenciário - Revisão da Vida Toda (v4)")
+st.title("📊 INSS Cálculo Previdenciário - Revisão da Vida Toda (v5)")
 
-# ===================
-# ETAPA 1 - IMPORTAÇÃO DOS DADOS CNIS E CARTA
-# ===================
+# ===============================
+# ETAPA 1: IMPORTAÇÃO DOS DADOS
+# ===============================
+st.sidebar.header("📥 Etapa 1: Importação dos Dados")
+cnis_file = st.sidebar.file_uploader("Importar CSV do CNIS", type="csv")
+carta_file = st.sidebar.file_uploader("Importar CSV da Carta de Benefício", type="csv")
 
-st.sidebar.header("🔽 Etapa 1: Importação dos Dados")
-uploaded_cnis = st.sidebar.file_uploader("Importe CSV do CNIS (Competência e Remuneração)", type="csv")
-uploaded_carta = st.sidebar.file_uploader("Importe CSV da Carta de Benefício", type="csv")
-
-if uploaded_cnis and uploaded_carta:
-    cnis_df = pd.read_csv(uploaded_cnis)
-    carta_df = pd.read_csv(uploaded_carta)
+if cnis_file and carta_file:
+    cnis = pd.read_csv(cnis_file)
+    carta = pd.read_csv(carta_file)
 
     st.subheader("📄 Dados CNIS")
-    st.dataframe(cnis_df)
-    st.subheader("📄 Dados Carta de Concessão")
-    st.dataframe(carta_df)
+    st.dataframe(cnis)
+    st.subheader("📄 Dados Carta de Benefício")
+    st.dataframe(carta)
 
-    # ===================
-    # ETAPA 2 - SANITIZAÇÃO E CLASSIFICAÇÃO TEMPORAL
-    # ===================
+    # ===============================
+    # ETAPA 2: SANITIZAÇÃO & NORMALIZAÇÃO
+    # ===============================
+    st.sidebar.header("🧹 Etapa 2: Sanitização")
 
-    st.sidebar.header("🔽 Etapa 2: Sanitização & Classificação")
-
-    def limpar_dados(df, col_remuneracao):
-        df = df.dropna(subset=[col_remuneracao])
-        df = df[df[col_remuneracao].apply(lambda x: str(x).replace('.', '').replace(',', '').replace(' ', '').replace('e', '').replace('E', '').replace('-', '').isdigit())]
-        df[col_remuneracao] = df[col_remuneracao].astype(float)
+    def sanitize_dataframe(df, salary_col):
+        df = df.dropna(subset=[salary_col])
+        df = df[df[salary_col].apply(lambda x: str(x).replace('.', '').replace(',', '').isdigit())]
+        df[salary_col] = df[salary_col].astype(float)
         return df
 
-    cnis_df = limpar_dados(cnis_df, cnis_df.columns[1])
-    carta_df = limpar_dados(carta_df, carta_df.columns[2])
+    cnis = sanitize_dataframe(cnis, cnis.columns[1])
+    carta = sanitize_dataframe(carta, carta.columns[2])
 
-    # ===================
-    # ETAPA 3 - CORREÇÃO MONETÁRIA
-    # ===================
+    # ===============================
+    # ETAPA 3: CLASSIFICAÇÃO TEMPORAL & MARCOS LEGAIS
+    # ===============================
+    st.sidebar.header("📆 Etapa 3: Classificação Temporal")
 
-    st.sidebar.header("🔽 Etapa 3: Correção Monetária")
+    def extract_year(data):
+        try:
+            return int(str(data)[:4])
+        except:
+            return np.nan
 
-    def aplicar_indice_corrigido(df, col_salario, col_indice):
-        df['Salário Corrigido'] = df[col_salario] * df[col_indice]
+    cnis['Ano'] = cnis[cnis.columns[0]].apply(extract_year)
+    carta['Ano'] = carta[carta.columns[1]].apply(extract_year)
+
+    # ===============================
+    # ETAPA 4: CORREÇÃO MONETÁRIA AVANÇADA
+    # ===============================
+    st.sidebar.header("💰 Etapa 4: Correção Monetária")
+
+    def aplicar_corrigido(df, salario_col, indice_col):
+        df['Salário Corrigido'] = df[salario_col] * df[indice_col]
         return df
 
-    carta_df = aplicar_indice_corrigido(carta_df, carta_df.columns[2], carta_df.columns[3])
+    carta = aplicar_corrigido(carta, carta.columns[2], carta.columns[3])
 
-    # ===================
-    # ETAPA 4 - SELEÇÃO 80% MAIORES SALÁRIOS
-    # ===================
+    # ===============================
+    # ETAPA 5: SELEÇÃO DOS 80% MELHORES SALÁRIOS
+    # ===============================
+    st.sidebar.header("📊 Etapa 5: Seleção dos 80% Maiores")
 
-    st.sidebar.header("🔽 Etapa 4: Seleção dos 80% Maiores Salários")
+    def top_80(df, col_corrigido):
+        df = df.sort_values(by=col_corrigido, ascending=False)
+        n = int(0.8 * len(df))
+        return df.head(n)
 
-    def selecionar_80_maiores(df, col_corrigido):
-        n_maiores = int(0.8 * len(df))
-        return df.nlargest(n_maiores, col_corrigido)
+    top_cnis = top_80(cnis, cnis.columns[1])
+    top_carta = top_80(carta, 'Salário Corrigido')
 
-    top_cnis = selecionar_80_maiores(cnis_df, cnis_df.columns[1])
-    top_carta = selecionar_80_maiores(carta_df, carta_df.columns[4])
-
-    st.subheader("📊 80% Maiores Salários CNIS")
+    st.subheader("📌 80% Maiores Salários CNIS")
     st.dataframe(top_cnis)
 
-    st.subheader("📊 80% Maiores Salários Carta")
+    st.subheader("📌 80% Maiores Salários Carta")
     st.dataframe(top_carta)
 
-    # ===================
-    # ETAPA 5 - FUNÇÕES DE CÁLCULO MATEMÁTICO INSS
-    # ===================
+    # ===============================
+    # ETAPA 6: CÁLCULO DO INSS - MÉTODOS MATEMÁTICOS
+    # ===============================
 
-    st.sidebar.header("🔽 Etapa 5: Aplicação do Cálculo Previdenciário")
+    st.sidebar.header("🧮 Etapa 6: Aplicação do Cálculo")
 
-    def calcular_media(df, col_corrigido):
-        return df[col_corrigido].mean()
+    media_cnis = round(top_cnis[cnis.columns[1]].mean(), 2)
+    media_carta = round(top_carta['Salário Corrigido'].mean(), 2)
 
-    media_cnis = calcular_media(top_cnis, top_cnis.columns[1])
-    media_carta = calcular_media(top_carta, top_carta.columns[4])
-
-    # Parâmetros previdenciários normativos
+    # Parâmetros Previdenciários
     Tc = 38 + (1/12) + (25/365)  # Tempo contribuição
     a = 0.31  # Alíquota
     Es = 21.8  # Expectativa sobrevida
     Id = 60  # Idade
-    coef = 1.0  # Coeficiente
+    coef = 1.0
 
     def fator_previdenciario(Tc, a, Es, Id):
         return round((Tc * a / Es) * (1 + ((Id + Tc * a) / 100)), 4)
 
     FP = fator_previdenciario(Tc, a, Es, Id)
 
-    def salario_beneficio(media_salarios, FP):
-        return round(media_salarios * FP, 2)
+    def salario_beneficio(media, FP):
+        return round(media * FP, 2)
 
-    salario_benef = salario_beneficio(media_cnis, FP)
+    sal_benef_cnis = salario_beneficio(media_cnis, FP)
+    sal_benef_carta = salario_beneficio(media_carta, FP)
 
-    def renda_mensal_inicial(salario_beneficio, coef=1.0):
-        return round(salario_beneficio * coef, 2)
-
-    renda_inicial = renda_mensal_inicial(salario_benef, coef)
-
-    # ===================
-    # RESULTADOS DETALHADOS
-    # ===================
-
-    st.header("📑 Resultado Detalhado do Cálculo Previdenciário")
-    st.write(f"**Média 80% CNIS:** R$ {media_cnis:,.2f}")
-    st.write(f"**Média 80% Carta:** R$ {media_carta:,.2f}")
+    # ===============================
+    # ETAPA 7: RESULTADO DETALHADO
+    # ===============================
+    st.header("📑 Resultado do Cálculo")
+    st.write(f"**Média CNIS:** R$ {media_cnis:,.2f}")
+    st.write(f"**Média Carta:** R$ {media_carta:,.2f}")
     st.write(f"**Fator Previdenciário:** {FP}")
-    st.write(f"**Salário de Benefício:** R$ {salario_benef:,.2f}")
-    st.write(f"**Renda Mensal Inicial (RMI):** R$ {renda_inicial:,.2f}")
+    st.write(f"**Salário Benefício CNIS:** R$ {sal_benef_cnis:,.2f}")
+    st.write(f"**Salário Benefício Carta:** R$ {sal_benef_carta:,.2f}")
 
-    # ===================
-    # ETAPA 6 - SALÁRIOS CRÍTICOS
-    # ===================
+    # ===============================
+    # ETAPA 8: IDENTIFICAÇÃO DE SALÁRIOS CRÍTICOS
+    # ===============================
 
-    st.subheader("🚩 Salários DESCONSIDERADOS Identificados na Carta")
-    desconsid = carta_df[carta_df.columns].apply(lambda x: x.astype(str).str.contains("DESCONSIDERADO", na=False)).any(axis=1)
-    criticos = carta_df[desconsid]
+    st.subheader("🚩 Salários Desconsiderados na Carta")
+    criticos = carta[carta.apply(lambda x: x.astype(str).str.contains("DESCONSIDERADO", na=False)).any(axis=1)]
+    st.dataframe(criticos)
 
-    if not criticos.empty:
-        st.dataframe(criticos)
-        st.warning("Salários desconsiderados detectados. Pode haver impacto no cálculo. Recomenda-se revisão!")
-    else:
-        st.success("Nenhum salário desconsiderado identificado.")
-
-    # ===================
-    # EXPORTAÇÃO
-    # ===================
-
-    resultado_df = pd.DataFrame({
+    # ===============================
+    # ETAPA 9: EXPORTAÇÃO
+    # ===============================
+    resultado = pd.DataFrame({
         'Fonte': ['CNIS', 'Carta'],
-        'Média dos 80% maiores salários': [media_cnis, media_carta],
+        'Média 80% Salários': [media_cnis, media_carta],
         'Fator Previdenciário': [FP, FP],
-        'Salário de Benefício Calculado': [salario_benef, salario_benef],
-        'Renda Mensal Inicial': [renda_inicial, renda_inicial]
+        'Salário Benefício': [sal_benef_cnis, sal_benef_carta]
     })
 
-    st.download_button("📥 Exportar Resultado Final (CSV)", data=resultado_df.to_csv(index=False), file_name='resultado_inss_final.csv')
+    st.download_button("📥 Exportar Resultado (CSV)", data=resultado.to_csv(index=False), file_name='resultado_previdenciario.csv')
 
-    # ===================
-    # ENGENHARIA REVERSA EXPLICADA
-    # ===================
+    # ===============================
+    # ETAPA 10: GRÁFICO VISUAL
+    # ===============================
 
-    st.header("📚 Engenharia Reversa Aplicada")
+    st.subheader("📈 Comparativo Visual CNIS x Carta")
+    st.bar_chart(data=resultado.set_index('Fonte')['Salário Benefício'])
+
+    # ===============================
+    # ETAPA 11: EXPLICAÇÃO
+    # ===============================
+    st.header("📚 Fundamentação Jurídico-Matemática")
     st.markdown("""
-    - **Tempo de Contribuição (Tc):** 38 anos, 1 mês, 25 dias
-    - **Expectativa de Sobrevida (Es):** 21,8 anos (IBGE)
-    - **Idade do Segurado (Id):** 60 anos
-    - **Alíquota Previdenciária (a):** 31%
-    - **Coeficiente:** 100%
+    - **Lei nº 8.213/91, Art. 29, §2º:** Critério dos 80% maiores salários.
+    - **Lei nº 9.876/99:** Introdução do Fator Previdenciário.
+    - **Expectativa IBGE + Idade + Alíquota:** Aplicados corretamente.
 
-    **Fórmula Aplicada:**
+    Todos os cálculos seguem rigorosamente os normativos previdenciários.
 
-    \[
-    FP = \left(\frac{T_c \times a}{E_s}\right) \times \left(1 + \frac{(I_d + T_c \times a)}{100}\right)
-    \]
-
-    **Cálculo estruturado conforme Lei 8.213/91, Lei 9.876/99 e EC 103/19, respeitando metodologia previdenciária.**
+    Recomenda-se revisar os salários desconsiderados para possível revisão mais vantajosa.
     """)
