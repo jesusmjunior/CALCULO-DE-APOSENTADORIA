@@ -186,4 +186,3 @@ if uploaded_cnis and uploaded_carta and uploaded_desconsid:
 
     **Substituição dos salários mais vantajosos já aplicada e demonstrada.**
     """)
-
