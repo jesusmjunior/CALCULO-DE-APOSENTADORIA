@@ -1,90 +1,57 @@
 import streamlit as st
-import requests
 import pandas as pd
-import re
+from io import StringIO
 
-# =========================
-# CONFIGURAÇÃO DO APP
-# =========================
-st.set_page_config(page_title="📂 Google Drive Público - Leitor de Pastas", layout="centered")
-st.title("📂 Leitor de Pasta Google Drive Pública via API")
+st.title("📊 Dashboard Previdenciário Simplificado - Versão Leve")
 
-st.markdown("""
-## 🚀 Insira o link público da pasta do Google Drive e extraia todos os arquivos visíveis!
+# Entrada de dados
+st.header("📥 Inserção dos Dados")
+file = st.file_uploader("Upload CNIS ou Carta (CSV/XLS)", type=['csv', 'xls', 'xlsx'])
+data_txt = st.text_area("Ou cole os dados em formato texto")
 
-1️⃣ Garanta que a pasta esteja compartilhada como **Qualquer pessoa com o link pode visualizar**.  
-2️⃣ Insira abaixo o link.  
-3️⃣ Clique em **Extrair Arquivos** para ver todos os arquivos e subpastas!
+def load_data(uploaded_file, txt_data):
+    if uploaded_file:
+        if uploaded_file.name.endswith('csv'):
+            return pd.read_csv(uploaded_file)
+        else:
+            return pd.read_excel(uploaded_file)
+    elif txt_data:
+        try:
+            return pd.read_csv(StringIO(txt_data), sep=None, engine='python')
+        except:
+            return None
+    return None
 
----  
-""")
+df = load_data(file, data_txt)
 
-# =========================
-# INPUT DO USUÁRIO
-# =========================
-url_pasta = st.text_input("🔗 Insira o link público da pasta:")
+if df is not None:
+    st.subheader("🔎 Dados Carregados")
+    st.dataframe(df)
 
-# =========================
-# SUA API KEY CONFIGURADA
-# =========================
-API_KEY = "AIzaSyAKibc0A3TerDdfQeZBLePxU01PbK_53Lw"
+    st.header("🧮 Cálculo Previdenciário")
+    df_sorted = df.sort_values(by=df.columns[0])
+    df_top = df_sorted.nlargest(int(0.8 * len(df_sorted)), df.columns[1])
+    media = df_top[df.columns[1]].mean()
 
-# =========================
-# FUNÇÕES AUXILIARES
-# =========================
+    Tc = 38 + (1/12) + (25/365)
+    a = 0.31
+    Es = 21.8
+    Id = 60
+    FP = (Tc * a / Es) * (1 + ((Id + Tc * a) / 100))
+    beneficio = media * FP
 
-def extrair_folder_id(url):
-    """Extrai o Folder ID da URL fornecida."""
-    match = re.search(r'/folders/([a-zA-Z0-9_-]+)', url)
-    if match:
-        return match.group(1)
-    else:
-        return None
+    st.write(f"**Média dos 80% maiores salários:** R$ {media:,.2f}")
+    st.write(f"**Fator Previdenciário:** {FP:.4f}")
+    st.write(f"**Salário de Benefício:** R$ {beneficio:,.2f}")
 
-def listar_arquivos(folder_id, api_key):
-    """Consulta a API Google Drive e retorna lista de arquivos/subpastas."""
-    arquivos = []
-    url_base = "https://www.googleapis.com/drive/v3/files"
-    params = {
-        "q": f"'{folder_id}' in parents",
-        "fields": "files(id, name, mimeType, webViewLink)",
-        "key": api_key
-    }
-    response = requests.get(url_base, params=params)
-    
-    if response.status_code == 200:
-        data = response.json()
-        for file in data.get('files', []):
-            arquivos.append({
-                "Nome": file.get('name'),
-                "ID": file.get('id'),
-                "Tipo": "Pasta" if file.get('mimeType') == "application/vnd.google-apps.folder" else "Arquivo",
-                "Link": file.get('webViewLink')
-            })
-        return arquivos
-    else:
-        st.error(f"Erro ao acessar Google API: {response.text}")
-        return []
+    st.subheader("📅 Normativa Aplicada")
+    df['Normativa'] = ["Lei 8.213/91" if int(str(x)[:4]) < 2019 else "Pós-2019" for x in df[df.columns[0]]]
+    st.dataframe(df[[df.columns[0], df.columns[1], 'Normativa']])
 
-# =========================
-# EXECUÇÃO
-# =========================
+    st.subheader("📈 Visualização dos Salários (Top 80%)")
+    st.bar_chart(data=df_top, x=df_top.columns[0], y=df_top.columns[1])
 
-if url_pasta:
-    folder_id = extrair_folder_id(url_pasta)
-    if not folder_id:
-        st.error("⚠️ Link inválido! Verifique se é um link público de pasta do Google Drive.")
-    else:
-        st.success("✅ Pasta identificada! Clique abaixo para extrair os arquivos:")
-        if st.button("📥 Extrair Arquivos"):
-            arquivos = listar_arquivos(folder_id, API_KEY)
-            if arquivos:
-                df = pd.DataFrame(arquivos)
-                st.success(f"✅ {len(arquivos)} itens encontrados!")
-                st.dataframe(df)
+    st.download_button("📥 Exportar Resultado (CSV)", data=df.to_csv(index=False), file_name='resultado_simplificado.csv')
 
-                # Download CSV
-                csv = df.to_csv(index=False)
-                st.download_button("📄 Baixar lista CSV", csv, file_name="lista_google_drive.csv")
-            else:
-                st.warning("Nenhum arquivo encontrado ou erro de permissão.")
+    st.markdown("---")
+    st.info("Cálculo realizado conforme Lei 8.213/91 e Instruções Normativas vigentes. Pronto para revisão judicial.")
