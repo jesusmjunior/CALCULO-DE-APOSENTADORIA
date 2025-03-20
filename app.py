@@ -45,7 +45,15 @@ if df is not None:
     st.write(f"**Salário de Benefício:** R$ {beneficio:,.2f}")
 
     st.subheader("📅 Normativa Aplicada")
-    df['Normativa'] = ["Lei 8.213/91" if int(str(x)[:4]) < 2019 else "Pós-2019" for x in df[df.columns[0]]]
+
+    def aplicar_normativa(valor):
+        try:
+            ano = int(str(valor)[:4])
+            return "Lei 8.213/91" if ano < 2019 else "Pós-2019"
+        except:
+            return "Não identificado"
+
+    df['Normativa'] = df[df.columns[0]].apply(aplicar_normativa)
     st.dataframe(df[[df.columns[0], df.columns[1], 'Normativa']])
 
     st.subheader("📈 Visualização dos Salários (Top 80%)")
