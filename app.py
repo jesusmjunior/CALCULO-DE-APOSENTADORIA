@@ -10,11 +10,20 @@ cnis_txt = st.text_area("Cole os dados do CNIS (Competência e Remuneração)", 
 st.header("📥 Etapa 2 - Inserção dos Dados da Carta de Concessão")
 carta_txt = st.text_area("Cole os dados da Carta de Benefício (SEQ, Data, Salário, Índice, Salário Corrigido, Observação)", height=200)
 
-def parse_data(text_data):
-    try:
-        return pd.read_csv(StringIO(text_data), sep=None, engine='python')
-    except:
-        return None
+def parse_data(text_data, sep_options=['\t', ';', ',']):
+    for sep in sep_options:
+        try:
+            df = pd.read_csv(StringIO(text_data), sep=sep)
+            return df
+        except:
+            continue
+    return None
+
+def clean_numeric(df, cols):
+    for col in cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    df = df.dropna(subset=cols)
+    return df
 
 # Processamento dos dados
 cnis_df = parse_data(cnis_txt)
@@ -24,6 +33,9 @@ if cnis_df is not None:
     st.subheader("🔎 Dados CNIS Carregados")
     st.dataframe(cnis_df)
 
+    # Limpeza de dados CNIS
+    cnis_df = clean_numeric(cnis_df, [cnis_df.columns[1]])
+
     st.subheader("📈 Gráfico CNIS - 80% Maiores Salários")
     cnis_sorted = cnis_df.sort_values(by=cnis_df.columns[0])
     cnis_top = cnis_sorted.nlargest(int(0.8 * len(cnis_sorted)), cnis_sorted.columns[1])
@@ -32,6 +44,9 @@ if cnis_df is not None:
 if carta_df is not None:
     st.subheader("🔎 Dados Carta de Benefício Carregados")
     st.dataframe(carta_df)
+
+    # Limpeza de dados Carta
+    carta_df = clean_numeric(carta_df, [carta_df.columns[2]])
 
     st.subheader("📈 Gráfico Carta - 80% Maiores Salários")
     carta_sorted = carta_df.sort_values(by=carta_df.columns[1])
@@ -59,7 +74,7 @@ if cnis_df is not None and carta_df is not None:
 
     # Explicação dos salários desconsiderados
     if 'Observação' in carta_df.columns:
-        desconsid = carta_df[carta_df['Observação'].str.contains("DESCONSIDERADO", na=False)]
+        desconsid = carta_df[carta_df['Observação'].astype(str).str.contains("DESCONSIDERADO", na=False)]
         if not desconsid.empty:
             st.subheader("🚩 Salários Desconsiderados na Carta")
             st.dataframe(desconsid)
@@ -69,7 +84,7 @@ if cnis_df is not None and carta_df is not None:
     resultado_df = pd.DataFrame({
         'Fonte': ['CNIS', 'Carta'],
         'Média dos 80% maiores salários': [media_cnis, media_carta],
-        'Salário de Benefício Calculado': [beneficio, carta_top[carta_top.columns[2]].sum()]  # Apenas ilustrativo
+        'Salário de Benefício Calculado': [beneficio, media_carta * FP]  # Ajustado
     })
     st.download_button("📥 Exportar Resultado Final (CSV)", data=resultado_df.to_csv(index=False), file_name='resultado_final.csv')
 
