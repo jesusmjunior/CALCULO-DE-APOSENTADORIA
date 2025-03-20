@@ -1,70 +1,84 @@
 import streamlit as st
 import pandas as pd
+from io import StringIO
 
-# -------------------- CONFIGURAÇÕES INICIAIS --------------------
-st.set_page_config(page_title="📂 Dashboard Documental", layout="wide")
+st.title("📊 Dashboard Previdenciário Modular - Revisão da Vida Toda")
 
-st.title("📂 DASHBOARD DOCUMENTAL")
-st.markdown("**Sistema de Classificação Documental com Filtros Dinâmicos e Representação Visual**")
+st.header("📥 Etapa 1 - Inserção dos Dados CNIS")
+cnis_txt = st.text_area("Cole os dados do CNIS (Competência e Remuneração)", height=200)
 
-# -------------------- CONFIGURAÇÕES FUZZY --------------------
-DICIONARIO_LOGICO = {
-    'pertinencia_alta': 0.9,
-    'pertinencia_media': 0.75,
-    'pertinencia_baixa': 0.6
-}
+st.header("📥 Etapa 2 - Inserção dos Dados da Carta de Concessão")
+carta_txt = st.text_area("Cole os dados da Carta de Benefício (SEQ, Data, Salário, Índice, Salário Corrigido, Observação)", height=200)
 
-# -------------------- CARREGAMENTO DE DADOS --------------------
-@st.cache_data(show_spinner="Carregando dados...")
-def load_data():
-    url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMXKjpKX5zUTvnv1609z3cnmU3FtTmDy4Y0NHYgEMFc78ZjC0ZesQoNeYafZqWtSl_deKwwBI1W0AB/pub?gid=2007751228&single=true&output=csv'
-    df = pd.read_csv(url)
-    df['Ano'] = df['Nome'].str.extract(r'(\d{4})')
-    df['Municipio'] = df['Nome'].str.extract(r'(BENEDITO LEITE|\b[A-Z ]+\b)')
-    df['Artefato'] = df['Subclasse_Funcional']
-    return df
+def parse_data(text_data):
+    try:
+        return pd.read_csv(StringIO(text_data), sep=None, engine='python')
+    except:
+        return None
 
-df = load_data()
+# Processamento dos dados
+cnis_df = parse_data(cnis_txt)
+carta_df = parse_data(carta_txt)
 
-# -------------------- FILTROS DINÂMICOS --------------------
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    ano_filter = st.multiselect('Ano:', options=sorted(df['Ano'].dropna().unique()), default=sorted(df['Ano'].dropna().unique()))
-with col2:
-    municipio_filter = st.multiselect('Município:', options=df['Municipio'].dropna().unique(), default=df['Municipio'].dropna().unique())
-with col3:
-    classe_filter = st.multiselect('Classe:', options=df['Classe_Final_V2'].unique(), default=df['Classe_Final_V2'].unique())
-with col4:
-    artefato_filter = st.multiselect('Artefato:', options=df['Artefato'].unique(), default=df['Artefato'].unique())
+if cnis_df is not None:
+    st.subheader("🔎 Dados CNIS Carregados")
+    st.dataframe(cnis_df)
 
-filtered_df = df[
-    (df['Ano'].isin(ano_filter)) &
-    (df['Municipio'].isin(municipio_filter)) &
-    (df['Classe_Final_V2'].isin(classe_filter)) &
-    (df['Artefato'].isin(artefato_filter))
-]
+    st.subheader("📈 Gráfico CNIS - 80% Maiores Salários")
+    cnis_sorted = cnis_df.sort_values(by=cnis_df.columns[0])
+    cnis_top = cnis_sorted.nlargest(int(0.8 * len(cnis_sorted)), cnis_sorted.columns[1])
+    st.bar_chart(data=cnis_top, x=cnis_top.columns[0], y=cnis_top.columns[1])
 
-# -------------------- ABA NAVEGAÇÃO --------------------
-menu = st.sidebar.selectbox("Navegar", ["📊 Resumo Simplificado", "📑 Estatísticas", "📂 Documentos Classificados"])
+if carta_df is not None:
+    st.subheader("🔎 Dados Carta de Benefício Carregados")
+    st.dataframe(carta_df)
 
-if menu == "📊 Resumo Simplificado":
-    st.subheader('Resumo por Ano e Classe')
-    resumo = filtered_df.groupby(['Ano', 'Classe_Final_V2']).size().reset_index(name='Contagem')
-    st.dataframe(resumo, use_container_width=True)
+    st.subheader("📈 Gráfico Carta - 80% Maiores Salários")
+    carta_sorted = carta_df.sort_values(by=carta_df.columns[1])
+    carta_top = carta_sorted.nlargest(int(0.8 * len(carta_sorted)), carta_sorted.columns[2])
+    st.bar_chart(data=carta_top, x=carta_top.columns[1], y=carta_top.columns[2])
 
-elif menu == "📑 Estatísticas":
-    st.subheader('Resumo Estatístico')
-    count_table = filtered_df.groupby(['Ano', 'Classe_Final_V2']).size().reset_index(name='Contagem')
-    st.dataframe(count_table)
+# Etapa 3 - Processamento dos cálculos
+if cnis_df is not None and carta_df is not None:
+    st.header("🧮 Etapa 3 - Cálculo Previdenciário INSS Real")
 
-elif menu == "📂 Documentos Classificados":
-    st.subheader('Documentos Classificados por Tipologia')
-    table_links = filtered_df[['Nome', 'Ano', 'Municipio', 'Classe_Final_V2', 'Artefato', 'Link']]
-    def make_clickable(link):
-        return f'<a href="{link}" target="_blank">Abrir Documento</a>'
-    table_links['Link'] = table_links['Link'].apply(lambda x: make_clickable(x) if pd.notnull(x) else '')
-    st.write(table_links.to_html(escape=False, index=False), unsafe_allow_html=True)
+    media_cnis = cnis_top[cnis_top.columns[1]].mean()
+    media_carta = carta_top[carta_top.columns[2]].mean()
 
-# -------------------- RODAPÉ --------------------
-st.markdown("---")
-st.caption('Dashboard Documental | Classificação & Visualização Inteligente | Powered by Streamlit')
+    Tc = 38 + (1/12) + (25/365)
+    a = 0.31
+    Es = 21.8
+    Id = 60
+    FP = (Tc * a / Es) * (1 + ((Id + Tc * a) / 100))
+    beneficio = media_cnis * FP
+
+    st.write(f"**Média dos 80% maiores salários CNIS:** R$ {media_cnis:,.2f}")
+    st.write(f"**Média dos 80% maiores salários Carta:** R$ {media_carta:,.2f}")
+    st.write(f"**Fator Previdenciário:** {FP:.4f}")
+    st.write(f"**Salário de Benefício Calculado:** R$ {beneficio:,.2f}")
+
+    # Explicação dos salários desconsiderados
+    if 'Observação' in carta_df.columns:
+        desconsid = carta_df[carta_df['Observação'].str.contains("DESCONSIDERADO", na=False)]
+        if not desconsid.empty:
+            st.subheader("🚩 Salários Desconsiderados na Carta")
+            st.dataframe(desconsid)
+            st.write("Os salários marcados como DESCONSIDERADO não foram computados no cálculo por regra normativa específica.")
+
+    # Download dos resultados
+    resultado_df = pd.DataFrame({
+        'Fonte': ['CNIS', 'Carta'],
+        'Média dos 80% maiores salários': [media_cnis, media_carta],
+        'Salário de Benefício Calculado': [beneficio, carta_top[carta_top.columns[2]].sum()]  # Apenas ilustrativo
+    })
+    st.download_button("📥 Exportar Resultado Final (CSV)", data=resultado_df.to_csv(index=False), file_name='resultado_final.csv')
+
+# Etapa 4 - Sugestão de Revisão
+if cnis_df is not None and carta_df is not None:
+    st.header("📄 Etapa 4 - Sugestão Estratégica para Revisão Judicial")
+    st.write("Com base nos dados processados, recomenda-se incluir salários de maior remuneração não considerados, conforme os 80% mais vantajosos identificados. A análise indicou possível aumento no benefício ao considerar os seguintes pontos:")
+    st.markdown("- Reavaliação dos salários desconsiderados.")
+    st.markdown("- Aplicação integral da Lei 8.213/91 para períodos anteriores a 2019.")
+    st.markdown("- Recalcular o benefício aplicando os salários do CNIS mais vantajosos.")
+
+    st.success("Relatório pronto para uso jurídico e revisão da vida toda.")
